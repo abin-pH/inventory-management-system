@@ -1,0 +1,28 @@
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: low-stock-report
+  namespace: inventory
+spec:
+  schedule: "0 8 * * *"
+  timeZone: "Asia/Kolkata"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: report
+              image: inventory-system-stock:latest
+              imagePullPolicy: IfNotPresent
+              command: ["python", "report.py"]
+              envFrom:
+                - secretRef:
+                    name: inventory-secret
+                - configMapRef:
+                    name: inventory-config

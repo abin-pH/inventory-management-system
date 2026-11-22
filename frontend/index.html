@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inventory Management</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:960px;margin:2rem auto;padding:0 1rem;color:#222}
+  h1,h2{margin:.4em 0} table{border-collapse:collapse;width:100%;margin:.5rem 0}
+  th,td{border:1px solid #ddd;padding:6px 8px;text-align:left} th{background:#f4f4f4}
+  input,select,button{padding:6px 8px;margin:2px;font-size:14px}
+  .low{background:#fff0f0} .card{border:1px solid #ddd;border-radius:8px;padding:1rem;margin:1rem 0}
+  #err{color:#b00020}
+</style>
+</head>
+<body>
+<h1>Inventory Management</h1>
+<p id="err"></p>
+
+<div id="login" class="card">
+  <h2>Login</h2>
+  <input id="u" placeholder="username" value="admin">
+  <input id="p" type="password" placeholder="password" value="admin123">
+  <button onclick="login()">Login</button>
+</div>
+
+<div id="app" style="display:none">
+  <p>Logged in as <b id="who"></b> (<span id="role"></span>) <button onclick="logout()">Logout</button></p>
+
+  <div class="card" id="addBox">
+    <h2>Add product (admin)</h2>
+    <input id="sku" placeholder="SKU"><input id="name" placeholder="Name">
+    <input id="sup" placeholder="Supplier"><input id="price" type="number" placeholder="Price">
+    <input id="thr" type="number" placeholder="Low-stock threshold" value="10">
+    <button onclick="addProduct()">Add</button>
+  </div>
+
+  <div class="card">
+    <h2>Stock in / out</h2>
+    <select id="mp"></select>
+    <select id="mt"><option value="in">Stock in</option><option value="out">Stock out</option></select>
+    <input id="mq" type="number" min="1" placeholder="Quantity">
+    <button onclick="move()">Submit</button>
+  </div>
+
+  <h2>Products &amp; stock levels</h2>
+  <table><thead><tr><th>ID</th><th>SKU</th><th>Name</th><th>Supplier</th><th>Price</th><th>Qty</th><th>Threshold</th></tr></thead>
+  <tbody id="rows"></tbody></table>
+
+  <h2>Recent transactions</h2>
+  <table><thead><tr><th>When</th><th>Product</th><th>Type</th><th>Qty</th><th>User</th></tr></thead>
+  <tbody id="tx"></tbody></table>
+</div>
+
+<script>
+let token = localStorage.getItem("token"), role = localStorage.getItem("role");
+const $ = id => document.getElementById(id);
+async function api(path, method="GET", body){
+  const r = await fetch(path, {method, headers:{"Content-Type":"application/json", ...(token?{Authorization:"Bearer "+token}:{})}, body: body?JSON.stringify(body):undefined});
+  if(r.status===401 && token){ logout(); }
+  const data = r.status===204 ? null : await r.json().catch(()=>null);
+  if(!r.ok) throw new Error((data && data.detail) || r.statusText);
+  return data;
+}
+function show(e){ $("err").textContent = e ? (e.message||e) : ""; }
+async function login(){
+  try{
+    const d = await api("/api/auth/login","POST",{username:$("u").value,password:$("p").value});
+    token=d.access_token; role=d.role; localStorage.setItem("token",token); localStorage.setItem("role",role);
+    $("who").textContent=$("u").value; init(); show();
+  }catch(e){show(e)}
+}
+function logout(){ token=null; localStorage.clear(); $("login").style.display=""; $("app").style.display="none"; }
+async function init(){
+  if(!token) return;
+  $("login").style.display="none"; $("app").style.display="";
+  $("role").textContent=role; $("addBox").style.display = role==="admin" ? "" : "none";
+  refresh();
+}
+async function refresh(){
+  try{
+    const [products, levels, tx] = await Promise.all([api("/api/products"), api("/api/stock/levels"), api("/api/stock/transactions?limit=15")]);
+    const qty = Object.fromEntries(levels.map(l=>[l.product_id,l.quantity]));
+    const names = Object.fromEntries(products.map(p=>[p.id,p.name]));
+    $("rows").innerHTML = products.map(p=>{ const q=qty[p.id]||0;
+      return `<tr class="${q<=p.low_stock_threshold?"low":""}"><td>${p.id}</td><td>${p.sku}</td><td>${p.name}</td><td>${p.supplier}</td><td>${p.price}</td><td>${q}</td><td>${p.low_stock_threshold}</td></tr>`}).join("");
+    $("mp").innerHTML = products.map(p=>`<option value="${p.id}">${p.sku} - ${p.name}</option>`).join("");
+    $("tx").innerHTML = tx.map(t=>`<tr><td>${new Date(t.created_at).toLocaleString()}</td><td>${names[t.product_id]||t.product_id}</td><td>${t.type}</td><td>${t.quantity}</td><td>${t.username}</td></tr>`).join("");
+  }catch(e){show(e)}
+}
+async function addProduct(){
+  try{
+    await api("/api/products","POST",{sku:$("sku").value,name:$("name").value,supplier:$("sup").value,price:+$("price").value||0,low_stock_threshold:+$("thr").value||0});
+    show(); refresh();
+  }catch(e){show(e)}
+}
+async function move(){
+  try{
+    await api("/api/stock/move","POST",{product_id:+$("mp").value,type:$("mt").value,quantity:+$("mq").value});
+    show(); refresh();
+  }catch(e){show(e)}
+}
+init();
+</script>
+</body>
+</html>

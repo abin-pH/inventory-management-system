@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: inventory
+      POSTGRES_USER: inventory
+      POSTGRES_PASSWORD: inventory_pw
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inventory -d inventory"]
+      interval: 5s
+      retries: 10
+
+  auth:
+    build: ./services/auth
+    environment: &env
+      DATABASE_URL: postgresql+psycopg2://inventory:inventory_pw@db:5432/inventory
+      JWT_SECRET: change-me-in-production
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin123
+    depends_on:
+      db: { condition: service_healthy }
+
+  products:
+    build: ./services/products
+    environment: *env
+    depends_on:
+      db: { condition: service_healthy }
+
+  stock:
+    build: ./services/stock
+    environment:
+      <<: *env
+      PRODUCTS_URL: http://products:8000
+    depends_on:
+      db: { condition: service_healthy }
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on: [auth, products, stock]
+
+volumes:
+  pgdata:

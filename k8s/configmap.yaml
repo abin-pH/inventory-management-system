@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inventory-config
+  namespace: inventory
+data:
+  PRODUCTS_URL: "http://products:8000"
+  AUTH_URL: "http://auth:8000"
+  STOCK_URL: "http://stock:8000"
