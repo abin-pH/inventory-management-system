@@ -1,0 +1,58 @@
+
+name: Inventory System CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test FastAPI Services
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r services/auth/requirements.txt
+          pip install -r services/products/requirements.txt
+          pip install -r services/stock/requirements.txt
+          pip install pytest httpx
+
+      - name: Run automated tests
+        run: python -m pytest tests/test_health.py -v
+
+  docker-build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: test
+
+    strategy:
+      matrix:
+        include:
+          - name: auth
+            context: ./services/auth
+          - name: products
+            context: ./services/products
+          - name: stock
+            context: ./services/stock
+          - name: frontend
+            context: ./frontend
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t inventory-system-${{ matrix.name }}:ci ${{ matrix.context }}
